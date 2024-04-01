@@ -560,7 +560,7 @@ if __name__ == '__main__':
     parser.add_argument('-codec', action='store', help='Sets encoding used (codec) from the target\'s output (default '
                                                        '"%s"). If errors are detected, run chcp.com at the target, '
                                                        'map the result with '
-                          'https://docs.python.org/3/library/codecs.html#standard-encodings and then execute wmiexec.py '
+                          'https://docs.python.org/3/library/codecs.html#standard-encodings and then execute dcomexec.py '
                           'again with -codec and the corresponding codec ' % CODEC)
     parser.add_argument('-object', choices=['ShellWindows', 'ShellBrowserWindow', 'MMC20'], nargs='?', default='ShellWindows',
                         help='DCOM object to be used to execute the shell command (default=ShellWindows)')
