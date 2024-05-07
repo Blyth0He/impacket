@@ -1,6 +1,6 @@
 # Impacket - Collection of Python classes for working with network protocols.
 #
-# SECUREAUTH LABS. Copyright (C) 2020 SecureAuth Corporation. All rights reserved.
+# Copyright (C) 2023 Fortra. All rights reserved.
 #
 # This software is provided under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -266,7 +266,7 @@ class SMBSocksRelay(SocksRelay):
                 respSMBCommand['DialectRevision'] = SMB2_DIALECT_WILDCARD
             else:
                 respSMBCommand['DialectRevision'] = self.serverDialect
-                resp['MessageID'] = 1
+                resp['MessageID'] = recvPacket['MessageID']
             respSMBCommand['ServerGuid'] = b(''.join([random.choice(string.ascii_letters) for _ in range(16)]))
             respSMBCommand['Capabilities'] = 0x7
             respSMBCommand['MaxTransactSize'] = 65536

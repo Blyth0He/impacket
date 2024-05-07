@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Impacket - Collection of Python classes for working with network protocols.
 #
-# SECUREAUTH LABS. Copyright (C) 2022 SecureAuth Corporation. All rights reserved.
+# Copyright (C) 2023 Fortra. All rights reserved.
 #
 # This software is provided under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -459,6 +459,8 @@ def parse_identity(args):
 
     if args.hashes is not None:
         lmhash, nthash = args.hashes.split(':')
+        if lmhash == '':
+            lmhash = 'aad3b435b51404eeaad3b435b51404ee'
     else:
         lmhash = ''
         nthash = ''
@@ -483,7 +485,7 @@ def init_ldap_connection(target, tls_version, args, domain, username, password, 
     if tls_version is not None:
         use_ssl = True
         port = 636
-        tls = ldap3.Tls(validate=ssl.CERT_NONE, version=tls_version)
+        tls = ldap3.Tls(validate=ssl.CERT_NONE, version=tls_version, ciphers='ALL:@SECLEVEL=0')
     else:
         use_ssl = False
         port = 389

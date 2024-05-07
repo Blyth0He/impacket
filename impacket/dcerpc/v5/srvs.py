@@ -1,6 +1,6 @@
 # Impacket - Collection of Python classes for working with network protocols.
 #
-# SECUREAUTH LABS. Copyright (C) 2020 SecureAuth Corporation. All rights reserved.
+# Copyright (C) 2023 Fortra. All rights reserved.
 #
 # This software is provided under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -11,7 +11,7 @@
 #
 #   Best way to learn how to use these calls is to grab the protocol standard
 #   so you understand what the call does, and then read the test case located
-#   at https://github.com/SecureAuthCorp/impacket/tree/master/tests/SMB_RPC
+#   at https://github.com/fortra/impacket/tree/master/tests/SMB_RPC
 #
 #   Some calls have helper functions, which makes it even easier to use.
 #   They are located at the end of this file.
@@ -3095,9 +3095,12 @@ def hNetrShareDel(dce, netName):
     request['NetName'] = netName
     return dce.request(request)
 
-def hNetrShareEnum(dce, level, resumeHandle = 0, preferedMaximumLength = 0xffffffff):
+def hNetrShareEnum(dce, level, resumeHandle = 0, preferedMaximumLength = 0xffffffff, serverName = '\x00'):
+    # serverName example: "\\\\1.2.3.4\x00"
+    if serverName[-1] != '\x00':
+        serverName += '\x00'  # final NULL byte is mandatory
     request = NetrShareEnum()
-    request['ServerName'] = '\x00'
+    request['ServerName'] = serverName
     request['PreferedMaximumLength'] = preferedMaximumLength
     request['ResumeHandle'] = resumeHandle
     request['InfoStruct']['Level'] = level
